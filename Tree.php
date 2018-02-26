@@ -1,108 +1,82 @@
 <?php
 /**
- * Mageplaza
  *
- * NOTICE OF LICENSE
- *
- * This source file is subject to the Mageplaza.com license that is
- * available through the world-wide-web at this URL:
- * https://www.mageplaza.com/LICENSE.txt
- *
- * DISCLAIMER
- *
- * Do not edit or add to this file if you wish to upgrade this extension to newer
- * version in the future.
- *
- * @category    Mageplaza
- * @package     Mageplaza_Blog
- * @copyright   Copyright (c) 2018 Mageplaza (http://www.mageplaza.com/)
- * @license     https://www.mageplaza.com/LICENSE.txt
+ * Copyright © Magento, Inc. All rights reserved.
+ * See COPYING.txt for license details.
  */
+namespace Mageplaza\LayeredNavigationUltimate\Controller\Adminhtml\CategoryPage;
 
-namespace Mageplaza\LayeredNavigationUltimate\Block\Adminhtml\CategoryPage;
-
-use Magento\Backend\Block\Template\Context;
-use Magento\Backend\Model\Auth\Session;
-use Magento\Catalog\Model\Category;
-use Magento\Catalog\Model\CategoryFactory as CatalogCategoryFactory;
-use Magento\Catalog\Model\ResourceModel\Category\Tree as TreeResource;
-use Magento\Framework\Data\Tree\Node;
-use Magento\Framework\DB\Helper;
-use Magento\Framework\Json\EncoderInterface;
-use Magento\Framework\Registry;
-
-/**
- * @method Tree setUseAjax($useAjax)
- * @method bool getUseAjax()
- */
-class Tree extends \Magento\Catalog\Block\Adminhtml\Category\Tree
+class Tree extends \Magento\Catalog\Controller\Adminhtml\Category
 {
+    /**
+     * @var \Magento\Framework\Controller\Result\JsonFactory
+     */
+    protected $resultJsonFactory;
 
     /**
-     * Tree constructor.
-     * @param \Magento\Backend\Block\Template\Context $context
-     * @param \Magento\Catalog\Model\ResourceModel\Category\Tree $categoryTree
-     * @param \Magento\Framework\Registry $registry
-     * @param \Magento\Catalog\Model\CategoryFactory $categoryFactory
-     * @param \Magento\Framework\Json\EncoderInterface $jsonEncoder
-     * @param \Magento\Framework\DB\Helper $resourceHelper
-     * @param \Magento\Backend\Model\Auth\Session $backendSession
-     * @param array $data
+     * @var \Magento\Framework\View\LayoutFactory
+     */
+    protected $layoutFactory;
+
+    /**
+     * @param \Magento\Backend\App\Action\Context $context
+     * @param \Magento\Framework\Controller\Result\JsonFactory $resultJsonFactory
+     * @param \Magento\Framework\View\LayoutFactory $layoutFactory
      */
     public function __construct(
-        Context $context,
-        TreeResource $categoryTree,
-        Registry $registry,
-        CatalogCategoryFactory $categoryFactory,
-        EncoderInterface $jsonEncoder,
-        Helper $resourceHelper,
-        Session $backendSession,
-        array $data = []
-    )
-    {
-        parent::__construct($context, $categoryTree, $registry, $categoryFactory, $jsonEncoder, $resourceHelper, $backendSession, $data);
-
-        $this->_withProductCount = false;
+        \Magento\Backend\App\Action\Context $context,
+        \Magento\Framework\Controller\Result\JsonFactory $resultJsonFactory,
+        \Magento\Framework\View\LayoutFactory $layoutFactory
+    ) {
+        parent::__construct($context);
+        $this->resultJsonFactory = $resultJsonFactory;
+        $this->layoutFactory = $layoutFactory;
     }
 
     /**
-     * @return string
+     * Tree Action
+     * Retrieve category tree
+     *
+     * @return \Magento\Framework\Controller\ResultInterface
      */
-    public function getNodesUrl()
+    public function execute()
     {
-        return $this->getUrl('mplayer/categorypage/jsonTree');
+        $storeId = (int)$this->getRequest()->getParam('store');
+        $categoryId = (int)$this->getRequest()->getParam('id');
+
+        if ($storeId) {
+            if (!$categoryId) {
+                $store = $this->_objectManager
+                    ->get(\Magento\Store\Model\StoreManagerInterface::class)
+                    ->getStore($storeId);
+                $rootId = $store->getRootCategoryId();
+                $this->getRequest()->setParam('id', $rootId);
+            }
+        }
+
+        $category = $this->_initCategory(true);
+        if (!$category) {
+            /** @var \Magento\Backend\Model\View\Result\Redirect $resultRedirect */
+            $resultRedirect = $this->resultRedirectFactory->create();
+            return $resultRedirect->setPath('mplayer/*/', ['_current' => true, 'id' => null]);
+        }
+
+        $block = $this->layoutFactory->create()->createBlock(\Magento\Catalog\Block\Adminhtml\Category\Tree::class);
+        $root = $block->getRoot();
+        /** @var \Magento\Framework\Controller\Result\Json $resultJson */
+        $resultJson = $this->resultJsonFactory->create();
+        return $resultJson->setData([
+            'data' => $block->getTree(),
+            'parameters' => [
+                'text' => $block->buildNodeName($root),
+                'draggable' => false,
+                'allowDrop' => (bool)$root->getIsVisible(),
+                'id' => (int)$root->getId(),
+                'expanded' => (int)$block->getIsWasExpanded(),
+                'store_id' => (int)$block->getStore()->getId(),
+                'category_id' => (int)$category->getId(),
+                'root_visible' => (int)$root->getIsVisible(),
+            ],
+        ]);
     }
-
-    /**
-     * @return string
-     */
-    public function getMoveUrl()
-    {
-        return $this->getUrl('mplayer/categorypage/move');
-    }
-
-    /**
-     * @param array $args
-     * @return string
-     */
-    public function getSaveUrl(array $args = [])
-    {
-        $params = ['_current' => false, '_query' => false];
-        $params = array_merge($params, $args);
-
-        return $this->getUrl('mplayer/*/save', $params);
-    }
-
-    /**
-     * @return string
-     */
-    public function getEditUrl()
-    {
-        return $this->getUrl(
-            'mplayer/categorypage/edit',
-            ['store' => null, '_query' => false, 'id' => null, 'parent' => null]
-        );
-    }
-
-
 }
